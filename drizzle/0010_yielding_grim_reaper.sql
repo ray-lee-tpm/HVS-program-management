@@ -1,0 +1,1 @@
+ALTER TABLE `login_events` ADD `request_details` text;

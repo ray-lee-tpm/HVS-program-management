@@ -1,0 +1,9 @@
+import {loggedIn,sameOrigin} from '@/lib/auth';
+import {database} from '@/db/raw';
+import {canEdit} from '@/lib/permissions';
+import {validAttachments} from '@/lib/collaboration';
+import {plainText} from '@/lib/content';
+import {z} from 'zod';
+export const dynamic='force-dynamic';
+export async function GET(){try{const user=await loggedIn();if(!user)return Response.json({error:'Please log in.'},{status:401});if(user.role==='customer')return Response.json({error:'Internal updates are restricted.'},{status:403});const {results}=await database().prepare('SELECT id,author,content,created_at AS createdAt FROM status_updates WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT 200').bind(user.userId).all();return Response.json(results,{headers:{'Cache-Control':'no-store'}});}catch(e){console.error(e);return Response.json({error:'Updates could not be loaded.'},{status:503});}}
+export async function POST(req:Request){try{const user=await loggedIn();if(!user)return Response.json({error:'Please log in.'},{status:401});if(!canEdit(user)||!sameOrigin(req))return Response.json({error:'Request not allowed.'},{status:403});const p=z.object({id:z.string().uuid(),content:z.string().min(1).max(20000)}).safeParse(await req.json());if(!p.success||!plainText(p.data.content).trim()||!await validAttachments(user,p.data.content,'notes',user.userId))return Response.json({error:'Check the update and attachments.'},{status:400});const createdAt=Date.now();await database().prepare('INSERT OR IGNORE INTO status_updates (id,user_id,author,content,created_at) VALUES (?,?,?,?,?)').bind(p.data.id,user.userId,user.username,p.data.content,createdAt).run();return Response.json({...p.data,author:user.username,createdAt},{status:201});}catch(e){console.error(e);return Response.json({error:'Update could not be posted. Your draft is still here.'},{status:503});}}

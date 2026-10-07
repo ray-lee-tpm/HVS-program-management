@@ -1,0 +1,11 @@
+import { z } from 'zod';
+const text=z.string().trim().max(160);
+const date=z.string().refine(v=>/^\d{4}-\d{2}-\d{2}$/.test(v)&&!isNaN(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v,'Enter a valid date');
+export const contactSchema=z.object({id:z.string().max(100),name:text.min(1),role:text,email:z.union([z.literal(''),z.string().trim().email().max(254)]),phone:z.string().trim().max(80)});
+export const minuteSchema=z.object({id:z.string().max(100),title:text.min(1),date,attendees:z.string().trim().max(2000),notes:z.string().trim().max(20000)});
+export const customerSchema=z.object({name:text.min(1),contacts:z.array(contactSchema).max(100),minutes:z.array(minuteSchema).max(200)});
+export type CustomerData=z.infer<typeof customerSchema>;
+export type Customer=CustomerData & {id:string;revision:number};
+export type Contact=z.infer<typeof contactSchema>;
+export type Minute=z.infer<typeof minuteSchema>;
+export const blankCustomer=():CustomerData=>({name:'',contacts:[],minutes:[]});

@@ -1,0 +1,17 @@
+'use client';
+import {useAccess} from './access-context';
+import { useRef,useState } from 'react';
+import { Share2,X } from 'lucide-react';
+import { requestJSON } from '@/lib/client-api';
+type Props={kind:'tasks'|'projects'|'minutes'|'minute';customerId?:string;minuteId?:string;disabled?:boolean;small?:boolean};
+export default function ShareButton({kind,customerId,minuteId,disabled=false,small=false}:Props){
+ const access=useAccess();
+ const dialog=useRef<HTMLDialogElement>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[link,setLink]=useState<{id:string;url:string;expiresAt:number}|null>(null),[copied,setCopied]=useState(false);
+ const name=kind==='tasks'?'My Tasks':kind==='projects'?'My Projects':kind==='minute'?'this meeting record':'meeting minutes';
+ function open(){setError('');dialog.current?.showModal();}
+ async function create(){setBusy(true);setError('');setCopied(false);try{setLink(await requestJSON<{id:string;url:string;expiresAt:number}>('/api/shares',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,customerId,minuteId})}));}catch(e){setError(e instanceof Error?e.message:'Could not create the link.');}finally{setBusy(false);}}
+ async function copy(){try{await navigator.clipboard.writeText(link!.url);setCopied(true);}catch{setError('Select and copy the link below.');}}
+ async function revoke(){setBusy(true);setError('');try{await requestJSON('/api/shares',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:link!.id})});setLink(null);setCopied(false);}catch(e){setError(e instanceof Error?e.message:'Could not revoke this link.');}finally{setBusy(false);}}
+ if(!access.canEdit)return null;
+ return <><button className={'secondary '+(small?'small-button':'')} disabled={disabled} onClick={open}><Share2 size={small?14:16}/> Share{kind==='minutes'?' minutes':''}</button><dialog className="share-dialog" ref={dialog}><div className="dialog-header"><h2>Share {name}</h2><button className="icon-button" aria-label="Close sharing" onClick={()=>dialog.current?.close()}><X size={20}/></button></div><div className="form-body"><p className="share-description">Anyone with this link can view a read-only snapshot without logging in. The link expires after 7 days.</p><p className="share-description">{kind==='tasks'?'Includes all tasks, the Gantt chart, and your Results & Summary, Goals & Objectives, Lessons Learned, and Status Update notes.':kind==='projects'?'Includes all project summaries, teams, submission dates, and action items.':'Includes meeting notes, dates, and attendees. Customer contacts are not included.'} Later edits will not change this snapshot.</p>{link?<><label>Share link<input readOnly value={link.url} onFocus={e=>e.target.select()}/></label><p className="muted">Expires {new Date(link.expiresAt).toLocaleDateString()}</p><div className="share-actions"><button className="primary" onClick={copy}>{copied?'Copied':'Copy link'}</button><a className="secondary" href={link.url} target="_blank" rel="noopener noreferrer">Preview</a><button className="secondary" onClick={revoke} disabled={busy}>{busy?'Revoking…':'Revoke link'}</button></div><p role="status" className="muted">{copied?'Link copied. You can paste it into a message.':''}</p></>:<button className="primary" onClick={create} disabled={busy}>{busy?'Creating…':'Create share link'}</button>}{error&&<div className="error" role="alert">{error}</div>}</div></dialog></>;
+}
